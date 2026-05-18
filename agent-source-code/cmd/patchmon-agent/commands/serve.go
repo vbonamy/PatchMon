@@ -2332,11 +2332,11 @@ func runPatch(patchRunID, patchType string, packageNames []string, dryRun bool) 
 			switch pkgManager {
 			case "apt":
 				if dryRun {
-					if err, abort := runStep(false, "apt-get -s upgrade", "apt-get -s upgrade failed: %w", "apt-get", "-s", "upgrade"); abort {
+					if err, abort := runStep(false, "apt-get -s dist-upgrade", "apt-get -s dist-upgrade failed: %w", "apt-get", "-s", "dist-upgrade"); abort {
 						stepErr = err
 					}
 				} else {
-					if err, abort := runStep(false, "apt-get upgrade", "apt-get upgrade failed: %w", "apt-get", "upgrade", "-y"); abort {
+					if err, abort := runStep(false, "apt-get dist-upgrade", "apt-get dist-upgrade failed: %w", "apt-get", "dist-upgrade", "-y"); abort {
 						stepErr = err
 					}
 				}
