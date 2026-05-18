@@ -11,6 +11,7 @@ import (
 	"github.com/PatchMon/PatchMon/server-source-code/internal/agentregistry"
 	hostctx "github.com/PatchMon/PatchMon/server-source-code/internal/context"
 	"github.com/PatchMon/PatchMon/server-source-code/internal/database"
+	"github.com/PatchMon/PatchMon/server-source-code/internal/middleware"
 	"github.com/PatchMon/PatchMon/server-source-code/internal/models"
 	"github.com/PatchMon/PatchMon/server-source-code/internal/notifications"
 	"github.com/PatchMon/PatchMon/server-source-code/internal/queue"
@@ -638,6 +639,45 @@ func (h *HostsHandler) ForceAgentUpdate(w http.ResponseWriter, r *http.Request) 
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Agent update queued successfully",
+		"jobId":   info.ID,
+		"host": map[string]interface{}{
+			"id":           host.ID,
+			"friendlyName": host.FriendlyName,
+			"apiId":        host.ApiID,
+		},
+	})
+}
+
+// Reboot handles POST /hosts/:hostId/reboot.
+func (h *HostsHandler) Reboot(w http.ResponseWriter, r *http.Request) {
+	role, _ := r.Context().Value(middleware.UserRoleKey).(string)
+	if role != "superadmin" {
+		Error(w, http.StatusForbidden, "Super-admin access required")
+		return
+	}
+	if h.queueClient == nil {
+		Error(w, http.StatusServiceUnavailable, "Queue service unavailable")
+		return
+	}
+	hostID := chi.URLParam(r, "hostId")
+	host, err := h.hosts.GetByID(r.Context(), hostID)
+	if err != nil || host == nil {
+		Error(w, http.StatusNotFound, "Host not found")
+		return
+	}
+	task, err := queue.NewRebootTask(host.ApiID, hostFromRequest(r))
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Failed to create reboot task")
+		return
+	}
+	info, err := h.queueClient.Enqueue(task)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "Failed to queue reboot")
+		return
+	}
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Host reboot queued successfully",
 		"jobId":   info.ID,
 		"host": map[string]interface{}{
 			"id":           host.ID,

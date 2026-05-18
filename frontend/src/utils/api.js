@@ -130,6 +130,7 @@ export const adminHostsAPI = {
 			host_down_alerts_enabled: enabled,
 		}),
 	forceAgentUpdate: (hostId) => api.post(`/hosts/${hostId}/force-agent-update`),
+	reboot: (hostId) => api.post(`/hosts/${hostId}/reboot`),
 	refreshIntegrationStatus: (hostId) =>
 		api.post(`/hosts/${hostId}/refresh-integration-status`),
 	fetchReport: (hostId) => api.post(`/hosts/${hostId}/fetch-report`),

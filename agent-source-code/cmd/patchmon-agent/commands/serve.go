@@ -372,6 +372,10 @@ func runServiceLoop(stopCh <-chan struct{}) error {
 				if err := updateAgent(); err != nil {
 					logger.WithError(err).Warn("update_agent failed")
 				}
+			case "reboot":
+				if err := system.New(logger).RebootNow(); err != nil {
+					logger.WithError(err).Warn("reboot failed")
+				}
 			case "refresh_integration_status":
 				logger.Info("Refreshing integration status on server request...")
 				go reportIntegrationStatus(ctx)
@@ -1617,6 +1621,9 @@ func connectOnce(out chan<- wsMsg, dockerEvents <-chan interface{}, backoff *tim
 		case "update_agent":
 			logger.Info("update_agent received")
 			out <- wsMsg{kind: "update_agent"}
+		case "reboot":
+			logger.Info("reboot received")
+			out <- wsMsg{kind: "reboot"}
 		case "refresh_integration_status":
 			logger.Info("refresh_integration_status received")
 			out <- wsMsg{kind: "refresh_integration_status"}

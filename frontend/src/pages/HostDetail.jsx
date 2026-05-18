@@ -96,7 +96,7 @@ const HostDetail = () => {
 	const location = useLocation();
 	const queryClient = useQueryClient();
 	const toast = useToast();
-	const { canManageHosts, hasModule } = useAuth();
+	const { canManageHosts, hasModule, user } = useAuth();
 	const [showCredentialsModal, setShowCredentialsModal] = useState(false);
 
 	// Get plaintext API key from navigation state (only available immediately after host creation)
@@ -116,6 +116,7 @@ const HostDetail = () => {
 	const [notes, setNotes] = useState("");
 	const [notesMessage, setNotesMessage] = useState({ text: "", type: "" });
 	const [updateMessage, setUpdateMessage] = useState({ text: "", jobId: "" });
+	const [rebootMessage, setRebootMessage] = useState({ text: "", jobId: "" });
 	const [reportMessage, setReportMessage] = useState({ text: "", jobId: "" });
 	const [integrationRefreshMessage, setIntegrationRefreshMessage] = useState({
 		text: "",
@@ -391,6 +392,19 @@ const HostDetail = () => {
 		setAutoUpdateDialog(false);
 	};
 
+	const isSuperAdmin = user?.role === "superadmin";
+
+	const handleRebootHost = () => {
+		if (
+			!window.confirm(
+				`Are you sure you want to reboot host "${host.friendly_name}" now? The machine will restart immediately.`,
+			)
+		) {
+			return;
+		}
+		rebootHostMutation.mutate();
+	};
+
 	// Force agent update mutation
 	const forceAgentUpdateMutation = useMutation({
 		mutationFn: () =>
@@ -421,6 +435,30 @@ const HostDetail = () => {
 				() => setUpdateMessage({ text: "", jobId: "", isError: false }),
 				5000,
 			);
+		},
+	});
+
+	const rebootHostMutation = useMutation({
+		mutationFn: () => adminHostsAPI.reboot(hostId).then((res) => res.data),
+		onSuccess: (data) => {
+			queryClient.invalidateQueries(["host", hostId]);
+			queryClient.invalidateQueries(["hosts"]);
+			if (data?.jobId) {
+				setRebootMessage({
+					text: "Reboot queued successfully",
+					jobId: data.jobId,
+				});
+				safeSetTimeout(() => setRebootMessage({ text: "", jobId: "" }), 5000);
+			}
+		},
+		onError: (error) => {
+			const errorMsg = error.response?.data?.error || "Failed to send reboot command";
+			const details = error.response?.data?.details;
+			setRebootMessage({
+				text: details ? `${errorMsg}: ${details}` : errorMsg,
+				jobId: "",
+			});
+			safeSetTimeout(() => setRebootMessage({ text: "", jobId: "" }), 5000);
 		},
 	});
 
@@ -1336,7 +1374,7 @@ const HostDetail = () => {
 							</p>
 						)}
 					</div>
-					<div className="flex items-center gap-2 flex-shrink-0">
+					<div className="relative flex items-center gap-2 flex-shrink-0">
 						<button
 							type="button"
 							onClick={() => setShowCredentialsModal(true)}
@@ -1361,6 +1399,25 @@ const HostDetail = () => {
 								className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
 							/>
 						</button>
+						{isSuperAdmin && (
+							<button
+								type="button"
+								onClick={handleRebootHost}
+								disabled={rebootHostMutation.isPending || !wsStatus?.connected}
+								className="btn-outline flex items-center justify-center p-2 text-sm"
+								title={
+									!wsStatus?.connected
+										? "Agent is not connected"
+										: "Reboot host immediately"
+								}
+							>
+								<RotateCcw
+									className={`h-4 w-4 ${
+										rebootHostMutation.isPending ? "animate-spin" : ""
+									}`}
+								/>
+							</button>
+						)}
 						<button
 							type="button"
 							onClick={() => setShowDeleteModal(true)}
@@ -1369,6 +1426,16 @@ const HostDetail = () => {
 						>
 							<Trash2 className="h-4 w-4" />
 						</button>
+						{rebootMessage.text && (
+							<p className="text-xs text-secondary-600 dark:text-white absolute right-0 top-full mt-1">
+								{rebootMessage.text}
+								{rebootMessage.jobId && (
+									<span className="ml-1 font-mono text-secondary-500">
+										(Job #{rebootMessage.jobId})
+									</span>
+								)}
+							</p>
+						)}
 					</div>
 				</div>
 			</div>
@@ -1631,6 +1698,32 @@ const HostDetail = () => {
 												? "Update Now"
 												: "Offline"}
 									</button>
+										{isSuperAdmin && (
+											<button
+												type="button"
+												onClick={handleRebootHost}
+												disabled={
+													rebootHostMutation.isPending || !wsStatus?.connected
+												}
+												title={
+													!wsStatus?.connected
+														? "Agent is not connected"
+														: "Reboot host immediately"
+												}
+												className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary-700 dark:text-secondary-200 bg-secondary-50 dark:bg-secondary-700/50 border border-secondary-200 dark:border-secondary-600 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+											>
+												<RotateCcw
+													className={`h-3 w-3 ${
+														rebootHostMutation.isPending ? "animate-spin" : ""
+													}`}
+												/>
+												{rebootHostMutation.isPending
+													? "Rebooting..."
+													: wsStatus?.connected
+														? "Reboot Now"
+														: "Offline"}
+											</button>
+										)}
 									{updateMessage.text && (
 										<p className="text-xs mt-1.5 text-secondary-600 dark:text-white">
 											{updateMessage.text}
@@ -1642,6 +1735,16 @@ const HostDetail = () => {
 										</p>
 									)}
 								</div>
+										{rebootMessage.text && (
+											<p className="text-xs mt-1.5 text-secondary-600 dark:text-white">
+												{rebootMessage.text}
+												{rebootMessage.jobId && (
+													<span className="ml-1 font-mono text-secondary-500">
+														(Job #{rebootMessage.jobId})
+													</span>
+												)}
+											</p>
+										)}
 							</div>
 						</div>
 					</div>
@@ -2884,12 +2987,48 @@ const HostDetail = () => {
 													? "Update Now"
 													: "Offline"}
 										</button>
+														{isSuperAdmin && (
+															<button
+																type="button"
+																onClick={handleRebootHost}
+																disabled={
+																	rebootHostMutation.isPending || !wsStatus?.connected
+																}
+																title={
+																	!wsStatus?.connected
+																		? "Agent is not connected"
+																		: "Reboot host immediately"
+																}
+																className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary-700 dark:text-secondary-200 bg-secondary-50 dark:bg-secondary-700/50 border border-secondary-200 dark:border-secondary-600 rounded-md hover:bg-secondary-100 dark:hover:bg-secondary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+															>
+																<RotateCcw
+																	className={`h-3 w-3 ${
+																		rebootHostMutation.isPending ? "animate-spin" : ""
+																	}`}
+																/>
+																{rebootHostMutation.isPending
+																	? "Rebooting..."
+																	: wsStatus?.connected
+																		? "Reboot Now"
+																		: "Offline"}
+															</button>
+														)}
 										{updateMessage.text && (
 											<p className="text-xs mt-1.5 text-secondary-600 dark:text-white">
 												{updateMessage.text}
 												{updateMessage.jobId && (
 													<span className="ml-1 font-mono text-secondary-500">
 														(Job #{updateMessage.jobId})
+													</span>
+												)}
+											</p>
+										)}
+										{rebootMessage.text && (
+											<p className="text-xs mt-1.5 text-secondary-600 dark:text-white">
+												{rebootMessage.text}
+												{rebootMessage.jobId && (
+													<span className="ml-1 font-mono text-secondary-500">
+														(Job #{rebootMessage.jobId})
 													</span>
 												)}
 											</p>

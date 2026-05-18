@@ -22,6 +22,7 @@ const (
 	TypeRefreshIntegrationStatus = "refresh_integration_status"
 	TypeDockerInventoryRefresh   = "docker_inventory_refresh"
 	TypeUpdateAgent              = "update_agent"
+	TypeReboot                   = "reboot"
 	TypeSessionCleanup           = "session-cleanup"
 	TypeOrphanedRepoCleanup      = "orphaned-repo-cleanup"
 	TypeOrphanedPkgCleanup       = "orphaned-package-cleanup"
@@ -223,6 +224,15 @@ func NewUpdateAgentTask(apiID, host string, bypassSettings bool) (*asynq.Task, e
 		return nil, err
 	}
 	return asynq.NewTask(TypeUpdateAgent, payload, asynq.Queue(QueueAgentCommands), asynq.MaxRetry(3)), nil
+}
+
+// NewRebootTask creates a reboot task.
+func NewRebootTask(apiID, host string) (*asynq.Task, error) {
+	payload, err := json.Marshal(ReportNowPayload{ApiID: apiID, Host: host})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeReboot, payload, asynq.Queue(QueueAgentCommands), asynq.MaxRetry(2)), nil
 }
 
 // AutomationRetention keeps completed automation tasks in Redis for 7 days for dashboard visibility.
@@ -578,6 +588,27 @@ func (h *UpdateAgentHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	}
 	h.log.Info("update_agent sent", "api_id", p.ApiID)
 	return nil
+}
+
+// RebootHandler handles reboot jobs.
+type RebootHandler struct {
+	*ReportNowHandler
+}
+
+// NewRebootHandler creates a reboot handler.
+func NewRebootHandler(registry *agentregistry.Registry, db *database.DB, log *slog.Logger) *RebootHandler {
+	return &RebootHandler{ReportNowHandler: NewReportNowHandler(registry, db, log)}
+}
+
+// ProcessTask implements asynq.Handler.
+func (h *RebootHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p ReportNowPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
+
+	retryCount, _ := asynq.GetRetryCount(ctx)
+	return sendAgentCommand(ctx, h.ReportNowHandler, p, TypeReboot, "", retryCount)
 }
 
 // RunPatchHandler handles run_patch jobs.

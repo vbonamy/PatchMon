@@ -57,6 +57,33 @@ func (d *Detector) CheckRebootRequired() (bool, string) {
 	return false, ""
 }
 
+// RebootNow triggers an immediate system reboot.
+func (d *Detector) RebootNow() error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("shutdown", "/r", "/t", "0", "/f")
+	case "freebsd":
+		cmd = exec.Command("shutdown", "-r", "now")
+	default:
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			cmd = exec.Command("systemctl", "reboot")
+		} else {
+			cmd = exec.Command("shutdown", "-r", "now")
+		}
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(output))
+		if trimmed != "" {
+			return fmt.Errorf("failed to reboot system: %w: %s", err, trimmed)
+		}
+		return fmt.Errorf("failed to reboot system: %w", err)
+	}
+	return nil
+}
+
 // checkWindowsRebootRequired checks if Windows requires a reboot (per UsoClient/WUA docs)
 // Checks: RebootRequired registry, PendingFileRenameOperations, CBS reboot-pending
 func (d *Detector) checkWindowsRebootRequired() (bool, string) {
